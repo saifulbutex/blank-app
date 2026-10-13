@@ -273,7 +273,7 @@ if st.button("Generate Timetable"):
                     slot_key = f"Fri_{slot_idx}"
                     if slot_key in timetable:
                         for entry in timetable[slot_key]:
-                            timetable_df.at[slot_idx, entry['room']] = f"{entry['subject']} ({entry['faculty']})"
+                            timetable_df.at[slot_idx, entry['room']] = f"{entry['subject']} ({entry['faculty']}) ({entry['batches']})"
                 timetable_df.index = [TIME_MAP[s] for s in SLOTS]
                 st.dataframe(timetable_df.fillna("---"))
 

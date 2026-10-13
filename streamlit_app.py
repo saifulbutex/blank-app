@@ -216,7 +216,9 @@ if st.button("Generate Timetable"):
             def assign_session(index):
                 if index == len(sessions): return True
                 session = sessions[index]
-                for slot in faculties[session["faculty"]]["availability"]:
+                # Chronologically sorted available slots to minimize gaps
+                avail_slots = sorted(faculties[session["faculty"]]["availability"], key=lambda x: int(x.split('_')[1]))
+                for slot in avail_slots:
                     for room in rooms:
                         if can_assign(slot, room, session, timetable):
                             timetable.setdefault(slot, []).append({
@@ -261,9 +263,11 @@ if st.button("Generate Timetable"):
                 for slot_idx in SLOTS:
                     slot_key = f"Fri_{slot_idx}"
                     if slot_key in timetable:
+                        cell_contents = []
                         for entry in timetable[slot_key]:
-                            timetable_df.at[slot_idx, entry['room']] = f"{entry['subject']} ({entry['faculty']})"
-                timetable_df.index = [TIME_MAP[s] for s in SLOTS]
+                            batches_str = ",".join(entry['batches'])
+                            cell_contents.append(f"{entry['subject']} ({entry['faculty']}) - Batch: {batches_str}")
+                        timetable_df.at[slot_idx, entry['room']] = " | ".join(cell_contents) if len(cell_contents) == 1 else "\n".join(cell_contents)
                 st.dataframe(timetable_df.fillna("---"))
 
                 # Download

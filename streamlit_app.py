@@ -272,9 +272,11 @@ if st.button("Generate Timetable"):
                 for slot_idx in SLOTS:
                     slot_key = f"Fri_{slot_idx}"
                     if slot_key in timetable:
+                        cell_contents = []
                         for entry in timetable[slot_key]:
-                            timetable_df.at[slot_idx, entry['room']] = f"{entry['subject']} ({entry['faculty']})"
-                timetable_df.index = [TIME_MAP[s] for s in SLOTS]
+                            batches_str = ",".join(entry['batches'])
+                            cell_contents.append(f"{entry['subject']} ({entry['faculty']}) - Batch: {batches_str}")
+                        timetable_df.at[slot_idx, entry['room']] = " | ".join(cell_contents) if len(cell_contents) == 1 else "\n".join(cell_contents)
                 st.dataframe(timetable_df.fillna("---"))
 
                 # Download

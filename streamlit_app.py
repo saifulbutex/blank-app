@@ -217,6 +217,7 @@ if st.button("Generate Timetable"):
                     return True
                 session = sessions[index]
                 
+                # Sorted chronologically to minimize gaps (fill earlier slots first)
                 avail_slots = sorted(faculties[session["faculty"]]["availability"], key=lambda x: int(x.split('_')[1]))
                 
                 for slot in avail_slots:
@@ -261,7 +262,7 @@ if st.button("Generate Timetable"):
             if assign_session(0):
                 st.success("Timetable Generated Successfully with Minimized Gaps!")
                 
-                # Display timetable with batch numbers included
+                # Display timetable with Batch number and Faculty Initial included
                 st.subheader("Timetable")
                 timetable_df = pd.DataFrame(index=SLOTS, columns=all_rooms_for_display)
                 for slot_idx in SLOTS:

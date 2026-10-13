@@ -57,9 +57,7 @@ try:
         st.error("No semesters found in the courses sheet.")
         st.stop()
         
-    # Get only the last 3 semesters
-    last_3_semesters = all_semesters[:3]
-    semester_options = ["Select a semester"] + last_3_semesters
+    semester_options = ["Select a semester"] + all_semesters
     selected_semester = st.selectbox("Select Semester:", semester_options)
     
 except Exception as e:
@@ -219,8 +217,6 @@ if st.button("Generate Timetable"):
                     return True
                 session = sessions[index]
                 
-                # Sort available slots to prefer packing (consecutive slots) or minimizing gaps
-                # We sort by slot number to naturally favor filling earlier available slots first
                 avail_slots = sorted(faculties[session["faculty"]]["availability"], key=lambda x: int(x.split('_')[1]))
                 
                 for slot in avail_slots:
@@ -260,20 +256,22 @@ if st.button("Generate Timetable"):
                         "credit": fixed_eng102_session["credit"]
                     })
 
-            # Sort sessions to group similar batch sizes or constraint levels
             sessions.sort(key=lambda s: (len(s["batches"]), len(faculties[s["faculty"]]["availability"])))
 
             if assign_session(0):
                 st.success("Timetable Generated Successfully with Minimized Gaps!")
                 
-                # Display timetable
+                # Display timetable with batch numbers included
                 st.subheader("Timetable")
                 timetable_df = pd.DataFrame(index=SLOTS, columns=all_rooms_for_display)
                 for slot_idx in SLOTS:
                     slot_key = f"Fri_{slot_idx}"
                     if slot_key in timetable:
+                        cell_contents = []
                         for entry in timetable[slot_key]:
-                            timetable_df.at[slot_idx, entry['room']] = f"{entry['subject']} ({entry['faculty']})"
+                            batches_str = ",".join(entry['batches'])
+                            cell_contents.append(f"{entry['subject']} ({entry['faculty']}) - Batch: {batches_str}")
+                        timetable_df.at[slot_idx, entry['room']] = " | ".join(cell_contents) if len(cell_contents) == 1 else "\n".join(cell_contents)
                             
                 timetable_df.index = [TIME_MAP[s] for s in SLOTS]
                 st.dataframe(timetable_df.fillna("---"))

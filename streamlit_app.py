@@ -53,17 +53,28 @@ try:
         if re.match(r'^\d{3}', col):
             for val in df_subset[col].dropna():
                 val_str = str(val).strip()
-                matches = re.findall(r'(?:Summer|Fall|Spring|Winter)\d{4}', val_str)
+                matches = re.findall(r'(?:Summer|Fall|Spring)\d{4}', val_str)
                 semesters.update(matches)
     
-    all_semesters = sorted(list(semesters), reverse=True)
+    # Define custom weight for terms so Spring comes 1st, Summer 2nd, Fall 3rd
+    term_order = {"Spring": 1, "Summer": 2, "Fall": 3}
+
+    def semester_sort_key(sem):
+        # Extract season and year using regex (e.g., "Fall" and "2026")
+        match = re.match(r'(Spring|Summer|Fall)(\d{4})', sem)
+        if match:
+            season, year = match.groups()
+            return (int(year), term_order.get(season, 99))
+        return (0, 0)
+
+    # Sort semesters chronologically (oldest to newest, or reverse=True for newest first)
+    all_semesters = sorted(list(semesters), key=semester_sort_key, reverse=True)
+    
     if not all_semesters:
         st.error("No semesters found in the courses sheet.")
         st.stop()
     
-    # Get only the last 3 semesters
-    last_3_semesters = all_semesters[:3]
-    semester_options = ["Select a semester"] + last_3_semesters
+    semester_options = ["Select a semester"] + all_semesters
     selected_semester = st.selectbox("Select Semester:", semester_options)
     
 except Exception as e:

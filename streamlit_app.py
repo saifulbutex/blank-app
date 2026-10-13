@@ -11,12 +11,14 @@ st.write("This app generates a timetable for courses based on faculty and course
 # Inputs
 google_sheet_url_courses = st.text_input("Enter Google Sheet URL for Courses:", "https://docs.google.com/spreadsheets/d/1FaY1YLTtfoA7Rb2SlQXyYx5GljvKsp6b_UdLzxugJnM/edit?gid=0#gid=0")
 google_sheet_url_faculty = st.text_input("Enter Google Sheet URL for Faculty:", "https://docs.google.com/spreadsheets/d/1FaY1YLTtfoA7Rb2SlQXyYx5GljvKsp6b_UdLzxugJnM/edit?gid=402428488#gid=402428488")
+
 batches_input = st.text_input("Enter batches (comma-separated):", "232,233,241,242,243,251,252,253,261,262")
 batches = [b.strip() for b in batches_input.split(',')]
 
 # Teacher availability
 st.subheader("Teacher Availability")
 st.write("Edit the available slots for each teacher. Select the slots they can teach.")
+
 default_availability = {
     "DSMA": ["Fri_3", "Fri_4"],
     "SB": ["Fri_5"],
@@ -51,13 +53,15 @@ try:
                 val_str = str(val).strip()
                 matches = re.findall(r'(?:Summer|Fall|Spring|Winter)\d{4}', val_str)
                 semesters.update(matches)
-                
+    
     all_semesters = sorted(list(semesters), reverse=True)
     if not all_semesters:
         st.error("No semesters found in the courses sheet.")
         st.stop()
-        
-    semester_options = ["Select a semester"] + all_semesters
+    
+    # Get only the last 3 semesters
+    last_3_semesters = all_semesters[:3]
+    semester_options = ["Select a semester"] + last_3_semesters
     selected_semester = st.selectbox("Select Semester:", semester_options)
     
 except Exception as e:
@@ -75,7 +79,7 @@ if st.button("Generate Timetable"):
             df_from_google_sheet = df_courses
             csv_file = "/tmp/courses.csv"
             df_from_google_sheet.to_csv(csv_file, index=False)
-            
+
             semester_courses = {batch: [] for batch in batches}
             with open(csv_file, newline='', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
@@ -94,18 +98,17 @@ if st.button("Generate Timetable"):
             gid_match = re.search(r'gid=(\d+)', google_sheet_url_faculty)
             gid_faculty = gid_match.group(1) if gid_match else "0"
             csv_export_url_faculty = f"https://docs.google.com/spreadsheets/d/{sheet_id_faculty}/export?format=csv&gid={gid_faculty}"
-            
             df_raw_online = pd.read_csv(csv_export_url_faculty, header=None)
+
             header_row_index = -1
             for r_idx in range(min(df_raw_online.shape[0], 20)):
                 if df_raw_online.shape[1] > 0 and pd.notna(df_raw_online.iloc[r_idx, 0]) and isinstance(df_raw_online.iloc[r_idx, 0], str) and df_raw_online.iloc[r_idx, 0].strip().lower() == 'initial':
                     header_row_index = r_idx
                     break
-            
             if header_row_index == -1:
                 st.error("Could not find header row with 'Initial'.")
                 st.stop()
-                
+
             new_header = df_raw_online.iloc[header_row_index, 0:8]
             df_from_google_sheet_faculty = df_raw_online.iloc[header_row_index + 1:32, 0:8].copy()
             df_from_google_sheet_faculty.columns = new_header.str.strip()
@@ -151,7 +154,6 @@ if st.button("Generate Timetable"):
             df_faculty = final_df.copy()
             df_faculty['CourseCode'] = df_faculty['CourseCode'].astype(str).str.replace(' ', '-').str.upper()
             df_faculty = df_faculty.rename(columns={"CourseCode": "Course Code"})
-
             combined_df = pd.merge(df_summer_courses, df_faculty, on="Course Code", how="inner", suffixes=('_x', '_y'))
             combined_df = combined_df[["Batch", "Course Name_x", "Course Code", "Initial","Section","Credit"]]
             combined_df = combined_df.rename(columns={"Course Name_x": "Course Name"})
@@ -164,11 +166,7 @@ if st.button("Generate Timetable"):
             timeslots = [f"{d}_{s}" for d in DAYS for s in SLOTS]
 
             df = combined_df
-            grouped = df.groupby(['Course Code', 'Section', 'Initial']).agg({
-                'Batch': lambda x: sorted(list(x.unique())),
-                'Course Name': 'first',
-                'Credit': 'first'
-            }).reset_index()
+            grouped = df.groupby(['Course Code', 'Section', 'Initial']).agg({'Batch': lambda x: sorted(list(x.unique())), 'Course Name': 'first', 'Credit': 'first'}).reset_index()
 
             faculties = {}
             for initial in df['Initial'].unique():
@@ -193,6 +191,7 @@ if st.button("Generate Timetable"):
 
             rooms = [f"R{i}" for i in range(1, 5)]
             all_rooms_for_display = [f"R{i}" for i in range(1, 6)]
+
             timetable = {}
 
             def can_assign(slot, room, session, timetable):
@@ -213,13 +212,10 @@ if st.button("Generate Timetable"):
                 return True
 
             def assign_session(index):
-                if index == len(sessions):
-                    return True
+                if index == len(sessions): return True
                 session = sessions[index]
-                
-                # Sorted chronologically to minimize gaps (fill earlier slots first)
+                # Chronologically sorted available slots to minimize gaps
                 avail_slots = sorted(faculties[session["faculty"]]["availability"], key=lambda x: int(x.split('_')[1]))
-                
                 for slot in avail_slots:
                     for room in rooms:
                         if can_assign(slot, room, session, timetable):
@@ -232,11 +228,9 @@ if st.button("Generate Timetable"):
                                 "section": session["section"],
                                 "credit": session["credit"]
                             })
-                            if assign_session(index + 1):
-                                return True
+                            if assign_session(index + 1): return True
                             timetable[slot].pop()
-                            if not timetable[slot]:
-                                del timetable[slot]
+                            if not timetable[slot]: del timetable[slot]
                 return False
 
             if fixed_eng102_session:
@@ -245,7 +239,6 @@ if st.button("Generate Timetable"):
                 if fixed_slot_key not in faculties[fixed_eng102_session['faculty']]['availability']:
                     faculties[fixed_eng102_session['faculty']]['availability'].append(fixed_slot_key)
                     faculties[fixed_eng102_session['faculty']]['availability'].sort(key=lambda x: int(x.split('_')[1]))
-                
                 if can_assign(fixed_slot_key, fixed_room_name, fixed_eng102_session, timetable):
                     timetable.setdefault(fixed_slot_key, []).append({
                         "subject": fixed_eng102_session["name"],
@@ -257,11 +250,11 @@ if st.button("Generate Timetable"):
                         "credit": fixed_eng102_session["credit"]
                     })
 
-            sessions.sort(key=lambda s: (len(s["batches"]), len(faculties[s["faculty"]]["availability"])))
+            sessions.sort(key=lambda s: len(faculties[s["faculty"]]["availability"]))
 
             if assign_session(0):
-                st.success("Timetable Generated Successfully with Minimized Gaps!")
-                
+                st.success("Timetable Generated Successfully!")
+
                 # Display timetable with Batch number and Faculty Initial included
                 st.subheader("Timetable")
                 timetable_df = pd.DataFrame(index=SLOTS, columns=all_rooms_for_display)
@@ -273,10 +266,9 @@ if st.button("Generate Timetable"):
                             batches_str = ",".join(entry['batches'])
                             cell_contents.append(f"{entry['subject']} ({entry['faculty']}) - Batch: {batches_str}")
                         timetable_df.at[slot_idx, entry['room']] = " | ".join(cell_contents) if len(cell_contents) == 1 else "\n".join(cell_contents)
-                            
                 timetable_df.index = [TIME_MAP[s] for s in SLOTS]
                 st.dataframe(timetable_df.fillna("---"))
-                
+
                 # Download
                 csv_data = []
                 for slot, entries in timetable.items():
@@ -293,12 +285,12 @@ if st.button("Generate Timetable"):
                                 "Room": e['room'],
                                 "Time": TIME_MAP[slot_num]
                             })
-                
+                # Sort by Batch (descending) to group batches together
                 csv_data.sort(key=lambda x: x['Batch'], reverse=True)
                 timetable_csv = pd.DataFrame(csv_data, columns=["Batch", "Course Name", "Course Code", "Initial", "Section", "Credit", "Room", "Time"]).to_csv(index=False)
                 st.download_button("Download Detailed Batch Timetable CSV", timetable_csv, "detailed_batch_timetable.csv", "text/csv")
             else:
-                st.error("Failed to generate timetable with current constraints. Try relaxing teacher availability slightly.")
+                st.error("Failed to generate timetable.")
 
         except Exception as e:
             st.error(f"Error: {str(e)}")
